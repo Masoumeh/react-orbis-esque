@@ -1,159 +1,125 @@
-import React, { Component } from 'react';
-import { render } from 'react-dom';
-import ReactMapboxGl, { Feature, GeoJSONLayer, Popup } from 'react-mapbox-gl';
-import axios from 'axios';
+import React, {Component} from 'react';
+import {render} from 'react-dom';
+import {LayersControl, Map, TileLayer, LayerGroup} from 'react-leaflet';
+import {Sidebar, Tab} from 'react-leaflet-sidebarv2';
+// import {LayerGroup, LayersControl} from "react-leaflet/es/LayersControl";
+// import Sidebar from 'react-sidebar';
+import '../style/leaflet-sidebar.min.css'
+import '../style/font-awesome.min.css'
+import '../style/leaflet.css'
 
-import { MAPBOX_API_KEY } from './conf/constants.js';
-import { CIRCLE_STYLE, LINE_STYLE } from './conf/styles.js'
+const stamenTonerTiles = 'http://{s}.tile.stamen.com/watercolor/{z}/{x}/{y}.jpg';
+const stamenTonerAttr = 'Tiles and Data &copy; 2013 <a href="http://www.awmc.unc.edu" target="_blank">AWMC</a>' +
+    '<a href="http://creativecommons.org/licenses/by-nc/3.0/deed.en_US" target="_blank">CC-BY-NC 3.0</a>';
 
-import GraphHelper from './routing/GraphHelper.js';
-import MapboxPath from './MapboxPath.jsx';
+const { BaseLayer, Overlay } = LayersControl;
+const mql = window.matchMedia(`(min-width: 800px)`);
 
-import '../style/app.scss';
-
-const Map = ReactMapboxGl({ accessToken: MAPBOX_API_KEY });
-
-// For initializing empty state
-const EMPTY_GEOM = { type: 'FeatureCollection', features: [] };
 
 export default class App extends Component {
 
-  constructor(props) {
-    super(props);
-    this.state = {
-      zoom:   [4], // map zoom
-      center: [30, 33],
-      places: EMPTY_GEOM, // Places GeoJSON
-      routes: EMPTY_GEOM, // Routes GeoJSON
-      highlighted: { // Selected route (if any) - places & route segments
-        places:   [],
-        segments: []
-      }
+    constructor(props) {
+        super(props);
+        this.state = {
+            //react-leaflet-sidebar
+            collapsed: false,
+            selected: 'home',
+
+            //react-sidebar
+            sidebarDocked: mql.matches,
+            sidebarOpen: false,
+
+            zoom: [4], // map zoom
+            center: [30, 33],
+            containerStyle: {
+                height: "100vh",
+                width: "100vw"
+            },
+            // places: EMPTY_GEOM, // Places GeoJSON
+            // routes: EMPTY_GEOM, // Routes GeoJSON
+            highlighted: { // Selected route (if any) - places & route segments
+                places: [],
+                segments: []
+            }
+        }
+        //react-sidebar
+        this.mediaQueryChanged = this.mediaQueryChanged.bind(this);
+        this.onSetSidebarOpen = this.onSetSidebarOpen.bind(this);
     }
-  }
-
-  componentDidMount() {
-    this._canvas = document.querySelector('.mapboxgl-canvas');
-
-    axios.get('data/places_new_structure.geojson')
-      .then(result => {
-        this.setState({ places: result.data });
-      });
-
-    axios.get('data/routes.json')
-      .then(result => {
-        this._graph = GraphHelper.buildGraph(result.data.features);
-        this.setState({ routes: result.data });
-      });
-  }
-
-  /**
-   * Helper to find the segment for a given start/end place pair
-   * TODO move into a separate class (RoutableGraph?)
-   */
-  findSegment(from, to) {
-    return this.state.routes.features.find(segment => {
-      const s = segment.properties.sToponym;
-      const e = segment.properties.eToponym;
-      return (s === from && e === to) || (e === from && s === to);
-    });
-  }
-
-  /**
-   * TODO move into a separate class (RoutableGraph?)
-   */
-  calculateRoute(startFeature, endFeature) {
-    const getId = feature => {
-      const payload = JSON.parse(feature.properties.althurayyaData)
-      return payload.URI;
+    // react-sidebar
+    componentWillMount() {
+        mql.addListener(this.mediaQueryChanged);
     }
 
-    const start = getId(startFeature);
-    const end = getId(endFeature);
-
-    // Note that this returns the IDs of the *NODES* along the road, i.e.
-    // we now need to look up the segments which connect these nodes
-    const path = this._graph.findShortestPath(start, end);
-
-    if (path) {
-      // Sliding window across path, pairwise
-      const segments = [];
-      for (var i=1; i<path.length; i++) {
-        segments.push(this.findSegment(path[i - 1], path[i]));
-      }
-
-      return segments;
+    componentWillUnmount() {
+        this.state.mql.removeListener(this.mediaQueryChanged);
     }
-  }
 
-  onMapMove(e) {
-    this.setState({
-      zoom: [ e.transform._zoom ]
-    })
-  }
+    onSetSidebarOpen(open) {
+        this.setState({sidebarOpen: open});
+    }
 
-  onMouseEnterPlace(e) {
-    this._canvas.style.cursor = 'crosshair';
-  }
+    mediaQueryChanged() {
+        this.setState({sidebarDocked: mql.matches, sidebarOpen: false});
+    }
 
-  onMouseLeavePlace(e) {
-    this._canvas.style.cursor = 'inherit';
-  }
 
-  onSelectPlace(e) {
-    const feature = (e.features.length > 0) ? e.features[0] : null;
+    //react-leaflet-sidebar
+    onClose() {
+        this.setState({collapsed: true});
+    }
 
-    this.setState(previous => {
-      if (previous.highlighted.places.length === 1) {
-        const start = previous.highlighted.places[0];
-        const end = feature;
+    onOpen(id) {
+        this.setState({
+            collapsed: false,
+            selected: id,
+        })
+    }
 
-        const segments = this.calculateRoute(start, end);
+    render() {
+        return (
+            <div>
 
-        if (segments)
-          return { highlighted: { places: [ start, end ], segments: segments } };
-        else
-          return { highlighted: { places: [ start, end ] } };
-      } else
-        return { highlighted: { places: [ feature ] } };
-    });
-  }
-
-  // style="mapbox://styles/mapbox/streets-v9"
-
-  render() {
-    return (
-      <Map
-        style="https://klokantech.github.io/roman-empire/style.json"
-        zoom={this.state.zoom}
-        center={this.state.center}
-        onMoveEnd={this.onMapMove.bind(this)}
-        containerStyle={{
-          height: "100vh",
-          width: "100vw"
-        }}>
-          <GeoJSONLayer
-            id="routes"
-            data={this.state.routes}
-            type="line"
-            linePaint={LINE_STYLE} />
-
-          <GeoJSONLayer
-            id="places"
-            data={this.state.places}
-            type="circle"
-            circlePaint={CIRCLE_STYLE}
-            circleOnMouseEnter={this.onMouseEnterPlace.bind(this)}
-            circleOnMouseLeave={this.onMouseLeavePlace.bind(this)}
-            circleOnClick={this.onSelectPlace.bind(this)} />
-
-          <MapboxPath
-            places={this.state.highlighted.places}
-            segments={this.state.highlighted.segments} />
-      </Map>
-    )
-  }
-
+                <Sidebar id="sidebar" collapsed={this.state.collapsed} selected={this.state.selected}
+                         onOpen={this.onOpen.bind(this)} onClose={this.onClose.bind(this)}>
+                    <Tab id="home" header="Home" icon="fa fa-home">
+                        <p>No place like home!</p>
+                    </Tab>
+                    <Tab id="settings" header="Settings" icon="fa fa-cog" anchor="bottom">
+                        <p>Settings dialogue.</p>
+                    </Tab>
+                </Sidebar>
+                <Map className="sidebar-map"
+                     center={this.state.center}
+                     zoom={this.state.zoom}
+                >
+                    <LayersControl position="topright">
+                        <BaseLayer checked name="OpenStreetMap.WaterColor">
+                            <TileLayer
+                                // attribution={stamenTonerAttr}
+                                url={stamenTonerTiles}
+                            />
+                        </BaseLayer>
+                        <BaseLayer checked name="OpenStreetMap.Mapnik">
+                            <TileLayer
+                                attribution="&amp;copy <a href=&quot;http://osm.org/copyright&quot;>OpenStreetMap</a> contributors"
+                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                            />
+                        </BaseLayer>
+                        <BaseLayer name="OpenStreetMap.BlackAndWhite">
+                            <TileLayer
+                                attribution="&amp;copy <a href=&quot;http://osm.org/copyright&quot;>OpenStreetMap</a> contributors"
+                                url="https://tiles.wmflabs.org/bw-mapnik/{z}/{x}/{y}.png"
+                            />
+                        </BaseLayer>
+                    </LayersControl>
+                </Map>
+            </div>
+        );
+    }
 }
 
-render(<App />, document.getElementById('app'));
+render(
+    <App/>,
+    document.getElementById('mount')
+);

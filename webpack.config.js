@@ -1,4 +1,7 @@
+path = require('path')
 const webpack = require('webpack');
+const APP_DIR = path.resolve(__dirname, "./src/");
+
 
 module.exports = {
   entry: {
@@ -12,6 +15,7 @@ module.exports = {
   module: {
     loaders: [{
       test: /\.jsx?$/,
+        include: APP_DIR,
       exclude: /node_modules/,
       loader: 'babel',
       query: {
@@ -29,7 +33,20 @@ module.exports = {
     },{
       test: /\.scss$/,
       loaders: ["style-loader", "css-loader", "sass-loader"]
-    }]
+    },
+    ,{
+        test: /\.css$/,
+        exclude: /node_modules/,
+        // loaders: ["style-loader", "css-loader", "sass-loader"]
+        loaders: ['style-loader',
+              {
+                loader: 'css-loader',
+                options: {
+                  modules: true
+                }
+              }]
+    }
+    ]
   },
   watchOptions: {
     poll: 1000
